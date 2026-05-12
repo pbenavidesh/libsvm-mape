@@ -1588,11 +1588,13 @@ static void solve_epsilon_svr(
 	for(i=0;i<l;i++)
 	{
 		alpha2[i] = 0;
-		linear_term[i] = param->p - prob->y[i];
+		// MAPE-SVR: linear_term per appendix A, Mod 5 (paper lines 5440-5456).
+		// Reinterprets param->p (the -p CLI flag) as MAPE-tube width in percentage points.
+		linear_term[i] = prob->y[i] * (param->p / 100.0 - 1.0);
 		y[i] = 1;
 
 		alpha2[i+l] = 0;
-		linear_term[i+l] = param->p + prob->y[i];
+		linear_term[i+l] = prob->y[i] * (param->p / 100.0 + 1.0);
 		y[i+l] = -1;
 	}
 

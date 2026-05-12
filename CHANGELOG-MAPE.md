@@ -64,6 +64,52 @@ recovery all remain unchanged for MAPE-SVR.
 
 ---
 
+## Modification 5 — Linear-coefficient vector for the eps-SVR dual
+
+**Commit:** `feat(F10 Mod 5): MAPE linear_term in solve_epsilon_svr`
+**Paper reference:** appendix A, lines 5440–5456
+**Files:** `svm.cpp` (`solve_epsilon_svr()`, the in-loop initialization
+of `linear_term[i]` and `linear_term[i+l]`)
+
+Replaces
+
+```cpp
+linear_term[i]   = param->p - prob->y[i];   // standard eps-SVR
+linear_term[i+l] = param->p + prob->y[i];
+```
+
+with
+
+```cpp
+linear_term[i]   = prob->y[i] * (param->p / 100.0 - 1.0);   // MAPE-SVR
+linear_term[i+l] = prob->y[i] * (param->p / 100.0 + 1.0);
+```
+
+so that the dual's linear term matches the MAPE-SVR formulation (paper
+equation 2.2): the `q[k]` coefficients become `y_k(ε/100 − 1)` and
+`y_k(ε/100 + 1)` for the positive and negative slack variables
+respectively.
+
+### CLI-flag semantic change (`-p`)
+
+After this patch the `-p <eps>` flag is interpreted as a **MAPE-tube
+width in percentage points**, not an absolute tube width:
+
+| Flag | Stock LIBSVM (eps-SVR) | This fork (MAPE-SVR) |
+|------|------------------------|----------------------|
+| `-p 5` | tube of ±5 in target units | tube of ±5% relative to each y_k |
+| `-c 1` | scalar regularization C | C, scaled per-sample as 100·C/y_k internally |
+| `-s 3` | eps-SVR | MAPE-SVR (patched) |
+| `-s 4` | nu-SVR | unmodified (unpatched eps-SVR ν-formulation) |
+
+The asymmetric shrinking-threshold pattern of Lemma 4 of the paper
+emerges automatically from Mod 5 because
+`τ_{N+k} = τ_k + 2·y_k·ε/100` follows from this `linear_term` change
+(see Proposition on structural gap, paper §`sec:dual-kkt`); no
+additional code edit is needed.
+
+---
+
 ## Solver_NU::Solve and the Solver_NU path
 
 `Solver_NU::Solve()` at `svm.cpp:1017–1023` delegates to
