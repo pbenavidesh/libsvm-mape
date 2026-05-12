@@ -396,7 +396,7 @@ double Kernel::k_function(const svm_node *x, const svm_node *y,
 //
 class Solver {
 public:
-	Solver() {};
+	Solver() : Q_alpha_bound(NULL) {};
 	virtual ~Solver() {};
 
 	struct SolutionInfo {
@@ -410,6 +410,10 @@ public:
 	void Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 		   double *alpha_, double Cp, double Cn, double eps,
 		   SolutionInfo* si, int shrinking);
+	// MAPE-SVR extension: per-variable upper-bound vector of length l
+	// (length matches dual expansion). If NULL, get_C() falls back to
+	// scalar Cp/Cn (standard LIBSVM behavior). See CHANGELOG-MAPE.md.
+	void set_Q_alpha_bound(const double *Q_alpha_bound_) { Q_alpha_bound = Q_alpha_bound_; }
 protected:
 	int active_size;
 	schar *y;
@@ -421,6 +425,7 @@ protected:
 	const double *QD;
 	double eps;
 	double Cp,Cn;
+	const double *Q_alpha_bound;	// per-variable upper bounds (MAPE-SVR); NULL = use Cp/Cn
 	double *p;
 	int *active_set;
 	double *G_bar;		// gradient, if we treat free variables as 0
@@ -429,6 +434,7 @@ protected:
 
 	double get_C(int i)
 	{
+		if (Q_alpha_bound != NULL) return Q_alpha_bound[i];
 		return (y[i] > 0)? Cp : Cn;
 	}
 	void update_alpha_status(int i)
@@ -1590,7 +1596,18 @@ static void solve_epsilon_svr(
 		y[i+l] = -1;
 	}
 
+	// MAPE-SVR: per-sample upper bounds C_k = 100*C/y_k (paper appendix A, Mod 1).
+	// Same bound for alpha_k and alpha_k* (indices i and i+l in the dual expansion).
+	double *Q_alpha_bound = new double[2*l];
+	for(i=0;i<l;i++)
+	{
+		double C_k = 100.0 * param->C / prob->y[i];
+		Q_alpha_bound[i]   = C_k;
+		Q_alpha_bound[i+l] = C_k;
+	}
+
 	Solver s;
+	s.set_Q_alpha_bound(Q_alpha_bound);
 	s.Solve(2*l, SVR_Q(*prob,*param), linear_term, y,
 		alpha2, param->C, param->C, param->eps, si, param->shrinking);
 
@@ -1602,6 +1619,7 @@ static void solve_epsilon_svr(
 	}
 	info("nu = %f\n",sum_alpha/(param->C*l));
 
+	delete[] Q_alpha_bound;
 	delete[] alpha2;
 	delete[] linear_term;
 	delete[] y;
