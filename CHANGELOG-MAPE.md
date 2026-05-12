@@ -137,6 +137,41 @@ Produces:
 - `svm-scale` (unchanged from upstream)
 - `libsvm.so.4` (or platform equivalent)
 
+### Windows runtime dependencies (MSYS2 / MinGW-w64 build)
+
+Binaries built with the default MSYS2 MINGW64 toolchain link
+dynamically against three MinGW runtime DLLs located at
+`C:\msys64\mingw64\bin\`:
+
+- `libgcc_s_seh-1.dll`
+- `libstdc++-6.dll`
+- `libwinpthread-1.dll`
+
+When the binaries are invoked from a shell where this directory is
+not on PATH (e.g. PowerShell, cmd.exe, or an R session launched from
+either of those), the launch fails with `STATUS_DLL_NOT_FOUND` (exit
+code `0xC0000135`). Three remedies, in order of decreasing
+preference for distribution:
+
+1. **Caller augments PATH at runtime.** Prepend `C:\msys64\mingw64\bin`
+   to `PATH` before invoking `svm-train.exe` / `svm-predict.exe`.
+   This is what the reference R harness does
+   (`validation/smoke_libsvm.R` in the smo-paper repo). Zero patch
+   surface on the fork, but every consumer must replicate the PATH
+   logic.
+2. **Static-link the binaries.** Rebuild with
+   `make CFLAGS="-Wall -Wconversion -O3 -fPIC -static-libgcc -static-libstdc++"`
+   and add `-static -lpthread` to the link step in the Makefile.
+   Produces self-contained executables that run anywhere without a
+   PATH dependency. Adds ~1 MB per binary.
+3. **Ship the DLLs alongside the binaries.** Copy the three DLLs into
+   the directory containing `svm-train.exe`. Works because Windows
+   resolves DLLs from the executable's own directory first. Adds ~3
+   MB to the repository / distribution.
+
+Linux/macOS builds have no equivalent dependency: GCC's `libstdc++`
+and `libgcc` are part of the system runtime.
+
 ---
 
 ## Citation
